@@ -127,8 +127,8 @@ async function buildVectorStore() {
   );
 
   const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 250,
-    chunkOverlap: 0,
+    chunkSize: 512,
+    chunkOverlap: 10,
   });
 
   const splitDocs = await textSplitter.splitDocuments(docs.flat());
@@ -164,7 +164,7 @@ const app = graph.compile({
 async function invokeRag() {
   const graphResponse = await app.invoke(
     {
-      question: "Who wrote the article?",
+      question: "What are hash Indexes?",
     },
     { configurable: { thread_id: "1" } }
   );
