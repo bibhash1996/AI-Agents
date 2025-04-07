@@ -1,8 +1,6 @@
 import os
 from dotenv import load_dotenv
 from langchain_core.messages import (
-    AIMessage, 
-    HumanMessage, 
     SystemMessage,
 )
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -17,6 +15,7 @@ logger = logging.getLogger('language_agents')
 apiKey = os.getenv('OPENAI_API_KEY')
 
 llm = None  # Define llm variable with a default value
+
 try:
     llm = ChatOpenAI(api_key=apiKey,model='gpt-4o')
     logger.info("Successfully initialized openai model for language agents")
@@ -81,7 +80,7 @@ supervisor_prompt = ChatPromptTemplate.from_messages([
     SystemMessage(content="""You are the Supervisor Agent in a multi-agent system for writing code.
 Your job is to:
 1. Understand the user's requirements
-2. Coordinate the work between the Planning, Coding, Checking, and Testing agents
+2. Coordinate the work between the Planning, Coding and Checking agents
 3. Decide which agent should work next based on the current state
 4. Summarize the final solution for the user
 
@@ -123,12 +122,26 @@ Your output should be a structured plan that the Coding Agent can follow.
     MessagesPlaceholder(variable_name="messages"),
 ])
 
+checking_prompt = ChatPromptTemplate.from_messages([
+    SystemMessage(content="""You are the Checking Agent in a multi-agent system for writing code.
+Your job is to:
+1. Review the code produced by the Coding Agent
+2. Identify bugs, errors, or potential issues
+3. Suggest improvements for efficiency, readability, or maintainability
+4. Verify that the code meets all requirements from the original plan
+
+Your output should be a detailed review with specific feedback and suggestions.
+"""),
+    MessagesPlaceholder(variable_name="messages"),
+])
+
+
 # javascript_coding_agent = javascript_coding_prompt.pipe(llm)
 javascript_coding_agent = javascript_coding_prompt | llm
 language_decider_agent = language_decider_prompt | llm
 supervisor_agent = supervisor_prompt | llm
 planning_agent = planning_prompt | llm
-
+checking_agent = checking_prompt | llm
 
 python_coding_agent = python_coding_prompt | llm
 javascript_coding_agent = javascript_coding_prompt | llm

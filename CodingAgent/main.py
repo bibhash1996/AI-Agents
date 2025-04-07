@@ -23,7 +23,8 @@ from langchain_core.messages import (
 from agents import (
     language_decider_agent,
     supervisor_agent,
-    planning_agent
+    planning_agent,
+    checking_agent
 )
 from language_specific_agent import getLanguageSpecificCode
 
@@ -60,7 +61,6 @@ class GraphState(TypedDict):
     plan: str
     code: str
     review: str
-    test_results: str
     language: str  # Added language field to track which language was selected
     attempt: int  # Add attempt counter to prevent infinite loops
     next: Literal["decide_language","planning", "coding", "checking", "testing", "supervisor", "end"]
@@ -119,7 +119,6 @@ def supervisor(state:GraphState) -> GraphState:
     plan = state.get("plan", "")
     code = state.get("code", "")
     review = state.get("review", "")
-    test_results = state.get("test_results", "")
     language = state.get("language", "")
     attempt = state.get('attempt')
 
@@ -137,7 +136,6 @@ def supervisor(state:GraphState) -> GraphState:
 - Code: {"Completed" if code else "Not started"}
 - Language: {language}
 - Review: {"Completed" if review else "Not started"}
-- Test Results: {"Completed" if test_results else "Not started"}
 - Iteration: {attempt}/{MAX_ITERATIONS}
 
 Based on the current state, decide which agent should work next:
@@ -147,9 +145,8 @@ Based on the current state, decide which agent should work next:
 4. Testing agent - if we have code that needs to be tested
 5. End - if the task is complete
 
-Your decision should be one of: "planning", "coding", "checking", "testing", or "complete".
+Your decision should be one of: "planning", "coding", "checking" or "complete".
 
-{"Test results indicate issues that need to be fixed: " + test_results if test_results and ("error" in test_results.lower() or "bug" in test_results.lower() or "fix" in test_results.lower() or "issue" in test_results.lower() or "fail" in test_results.lower()) else ""}
 """
         )
     supervisor_messages = messages + [supervisor_instruction]
@@ -198,6 +195,32 @@ def coding(state:GraphState) -> GraphState:
         "next":"supervisor"
     }
 
+def checking(state:GraphState) -> GraphState:
+    messages = state["messages"]
+    plan = state["plan"]
+    code = state["code"]
+    language = state.get("language", "")
+    checking_instruction = HumanMessage(
+            content=f"Review this {language} code:\n\n{code}\n\nBased on the plan:\n\n{plan}\n\nFocus on {language}-specific best practices and standards."
+        )
+    checking_messages = messages + [checking_instruction]
+    response = checking_agent.invoke({ "messages":checking_messages })
+    print("Response from checking agent : " , response.content)
+    messages.append(response.content)
+
+    return {
+        **state,
+        'messages':messages,
+        'review':response.content,
+        'next':'supervisor'
+    }
+
+def testing(state: GraphState) -> GraphState:
+    messages = state["messages"]
+    plan = state["plan"]
+    code = state["code"]
+    language = state['language']
+
 
 def shouldContinue(state:GraphState):
     relevant = state['relevant']
@@ -215,6 +238,7 @@ workflow.add_node("isRelevant",isRelevant)
 workflow.add_node("decide_language",decideCodingLanguage)
 workflow.add_node("planning",planning)
 workflow.add_node("coding",coding)
+workflow.add_node("checking",checking)
 workflow.add_edge(START,"isRelevant")
 workflow.add_conditional_edges('isRelevant',shouldContinue, {
     "relevant":"supervisor",
@@ -225,12 +249,15 @@ workflow.add_conditional_edges('supervisor',shouldSupervisorContinue , {
     "decide_language":"decide_language",
     "planning":"planning",
     "coding":"coding",
+    "checking":"checking",
+    "complete":END,
     "end":END
 })
 
 workflow.add_edge('decide_language','supervisor')
 workflow.add_edge('planning','supervisor')
 workflow.add_edge('coding','supervisor')
+workflow.add_edge('checking','supervisor')
 
 app = workflow.compile()
 
